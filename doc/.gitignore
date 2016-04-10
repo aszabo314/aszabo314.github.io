@@ -1,0 +1,10 @@
+/packages
+paket-files
+**_config.xml
+bin/debug
+/src/.vs/Stub/v14/*.suo
+/bin/Release
+/src/Stub/obj/Release
+.fake
+/.paket/paket.exe
+/src/Stub/obj
