@@ -32,8 +32,8 @@ Aardvark also provides a framework for incremental adaptive computation, hencefo
 includes tools to describe the data flow within the program in a declarative style. This is usually different from what most people would call
 the traditional OOP style, which is why some code might look weird at first glance.
 
-For the 3D rendering, Aardvark's incremental rendering VM and the Aardvark.Scenegraph are used. Shaders are built with [Fshade, composable shaders for F#][fshade],
-which is also part of Aardvark.
+For the 3D rendering, Aardvark's [incremental rendering VM][renderingVM] and the [Aardvark.Rendering][aardvark.rendering] are used. Shaders are built with [Fshade, composable shaders for F#][fshade],
+which is [Aardvark.Rendering][aardvark.rendering]'s primary shader language.
 
 [tryfsharp]: http://www.tryfsharp.org/
 [fsharp]: http://fsharp.org/
@@ -42,6 +42,8 @@ which is also part of Aardvark.
 [aardvark]: https://github.com/vrvis/aardvark
 [vrvis]: http://www.vrvis.at/
 [fshade]: http://www.fshade.org/
+[renderingVM]: http://dl.acm.org/citation.cfm?id=2790073
+[aardvark.rendering]: https://github.com/vrvis/aardvark.rendering
 
 ## FSharp crash course
 
@@ -58,6 +60,10 @@ A fresh F# program can look like this:
 *)
 
 namespace Tutorial
+
+(*** hide ***)
+type EntryPointAttribute() = inherit System.Attribute()
+(***)
 
 open System
 
@@ -180,7 +186,12 @@ types from each other. Arguments can have their type annotated using `:`. A func
 
 (**
 In C#, function arguments are
-always tupled, that means the arguments can only exist together at the same time. That makes Currying impossible. A Tuple is noted like:
+always tupled implicitly, that means the arguments can only exist together at the same time. 
+Although curried functions can be [written explicitly in C#][curryingC], partial applications require additional programming effort. 
+A Tuple is noted like this (F# has syntactic sugar for working with tuples):
+
+[curryingC]: http://mikehadlow.blogspot.co.at/2008/03/currying-in-c-with-oliver-sturm.html
+
 *)
 
     let tuple = (1,2,3,4)
@@ -190,7 +201,7 @@ always tupled, that means the arguments can only exist together at the same time
 
 ### Lists and Types
 
-Tuples are an F# type. They are very often used to quickly group some variables together. However, too large tuples can become confusing.
+Tuples are base F# types. They are very often used to quickly group some variables together. However, too large tuples can become confusing.
 Let's look at other ways to define types:
 
 *)
@@ -249,13 +260,14 @@ Let's look at other ways to define types:
 The functional style prefers records and unions, the "read-only" types. However, especially when using stuff written in C#, "regular" classes are
 also an important tool of the trade. 
 
-The type system of F# is very powerful and it encourages modelling problems using a complete, coherent type system and collections of mapping functions.
+The type system of F# is very powerful and it encourages modelling problems using a complete, coherent [type system and collections of mapping functions][ddd].
 One important example for this are F# lists. F# lists represent immutable collections of values. Since everything is immutable, it makes little sense
 to iterate over list elements with loops. Instead, lists are usually traversed using recursive functions. The F# `List` module contains implementations
 for the common formal list operators, including `List.map`, `List.filter` and `List.fold`. Comprehensive descriptions of F# lists can be found in many places,
 [for example here][flist]. Instead, let's look at different ways to create lists: 
 
 [flist]: http://www.tutorialspoint.com/fsharp/fsharp_lists.htm
+[ddd]: https://fsharpforfunandprofit.com/ddd/
 
 *)
 
@@ -334,13 +346,18 @@ Let's look at some mods:
     printfn "%A" currentResult          //newResult is 15
 
 (**
-    
-The Mod system allows us to define our program in term of *dependencies*. Values change whenever one of their dependencies change. This is similar to
-an already well-established pattern called Reactive Programming, an implementation of which is given by Microsoft's Reactive Extensions (Rx), where 
-variables are usually given callback functions that do something whenever the value changes. However, since those effects are by definition mutating,
+
+There exist well established patterns for formulating self-adjusting values like this. Most of them build on the concept of events and callback
+functions that trigger when these events occur. The callback functions affect other variables, which may have callbacks of their own, creating
+a chain of callbacks that keeps the program state in sync. However, since those callbacks are by definition mutating,
 the side effects of such mutations very quickly grow in complexity and eventually get completely out of control, landing you in [callback hell][callback].
-The Mod system allows us to write code the functional way, isolating side effects to specific contexts! This "hides" the actual callback logic from the 
-programmer and allows us to work with the actual mapping functions, avoiding callback hell.
+
+The Mod system allows us to define our program in terms of *dependencies*. Values change whenever one of their dependencies change. The approach is similar to 
+reactive programming frameworks such as Microsoft's Reactive Extensions (Rx) which is based on
+the observer pattern. In order to prevent complexity problems, Rx provides a rich set of combinators for composing observables without the need to write callbacks manually.
+Similarly to Rx combinators, the Mod system allows us to write code the functional way, isolating side effects to specific contexts! 
+This "hides" the actual callback logic from the programmer and allows us to work with the actual mapping functions, avoiding callback hell.
+Crucially, and in contrast to Rx, the mod system tracks dependencies explicitly and only evaluates as much as needed in a lazy manner.
 
 Parallel to the IMods are the asets, adaptive sets, representing set semantics:
 
@@ -369,6 +386,8 @@ Parallel to the IMods are the asets, adaptive sets, representing set semantics:
 
 (**
 
+`aset`s also support `ASet.map`, `ASet.filter` and `ASet.fold`, among others.
+
 The Mod system is used extensively in Aardvark and has proven itself useful in many real-world applications. 
 The Fractal Terrain Generator project shows how to bind mods to Ui controls and how to make mods into 3D rendered images.
 
@@ -385,7 +404,7 @@ A simple scene graph could look like this:
 
     open Aardvark.SceneGraph
 
-    let coolISg ( ig : IndexedGeometry ) ( vt : IMod<Trafo3d> ) ( pt : IMod<Trafo3d> ) = 
+    let coolISg ( vt : IMod<Trafo3d> ) ( pt : IMod<Trafo3d> ) ( ig : IndexedGeometry ) = 
 
         let smallISg =
             ig  |> Sg.ofIndexedGeometry
@@ -531,6 +550,36 @@ of integrating something with the Mod system.
 
 Overall, the integration of XAML into the app creation workflow worked decently well, but I can't help but wonder if XAML is actually worth it.
 
+### Fixed Size Arrays in FShade
+
+GLSL does not allow arrays with dynamic size. To use arrays with a fixed size (but variable content) in your shader uniforms, `Aardvark.Base` contains a utility
+which is used like this:
+
+*)
+
+(*** hide ***)
+    let isg : ISg = failwith ""
+(***)
+
+    let arr = [| 1; 2; 3; 4 |]                                  
+
+    let fixedArr = adaptive {                                 //array size fixed, but content may change
+            return arr
+        }
+
+    let scenegraph = isg
+                     |> Sg.uniform "MyArray" fixedArr         //IMod of array
+
+    type UniformScope with
+        member x.MyArray : Arr<N<4>, int> = uniform?MyArray   //type Arr with generic parameters: N<size> and content type
+
+    let shader = vertex {
+                let test = uniform.MyArray                    
+                let z = test.[0]                              //array-indexing in shader
+                return z
+        } 
+
+(**
 *The end.*
 
 [modsys]: #Incremental-evaluation-The-Mod-System
